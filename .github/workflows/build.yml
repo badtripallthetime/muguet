@@ -48,21 +48,20 @@ jobs:
           rustup target add aarch64-apple-ios
           
           echo "=== 開始透過 Cargo 直接進行 iOS 編譯 ==="
-          # Muguet 本身是 Rust 專案，我們直接針對 ios 目標編譯 release 版
+          # 強制設定 iOS 最低部署版本為 15.0，解決符號找不到的問題
+          export IPHONEOS_DEPLOYMENT_TARGET=15.0
+          
           cargo build --target aarch64-apple-ios --release
           
           echo "=== 檢查編譯結果並組裝 .app ==="
-          # 尋找編譯出來的執行檔
           BINARY_PATH=$(find target/aarch64-apple-ios/release -maxdepth 1 -type f -not -name "*.*")
           
           if [ -n "$BINARY_PATH" ]; then
             echo "找到編譯好的二進位檔: $BINARY_PATH"
             
-            # 建立 iOS app 結構
             mkdir -p build/Payload/Muguet.app
             cp "$BINARY_PATH" build/Payload/Muguet.app/Muguet
             
-            # 建立簡單的 Info.plist 讓系統認得它
             cat << 'EOF' > build/Payload/Muguet.app/Info.plist
             <?xml version="1.0" encoding="UTF-8"?>
             <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
