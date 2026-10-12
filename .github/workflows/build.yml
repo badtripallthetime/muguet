@@ -40,6 +40,7 @@ jobs:
 
       - name: 編譯與打包 IPA
         run: |
+          # 找尋 project.yml 並確保我們回到真正的專案根目錄
           PROJECT_YML=$(find . -name "project.yml" | head -n 1)
           DIR=$(dirname "$PROJECT_YML")
           cd "$DIR"
@@ -51,11 +52,17 @@ jobs:
           cargo build --target aarch64-apple-ios --release
           
           echo "=== 檢查編譯結果並組裝 .app ==="
-          # 放寬搜尋條件，直接在整個 target 資料夾底下找沒有副檔名的主執行檔
-          BINARY_PATH=$(find target -name "muguet" -type f -not -name "*.*" | head -n 1)
+          # 回到 Git 專案最根目錄去尋找 target
+          cd /Users/runner/work/muguet/muguet
+          
+          # 印出當前目錄確認位置
+          pwd
+          ls -la
+          
+          # 直接在全域搜尋執行檔
+          BINARY_PATH=$(find . -name "muguet" -type f -not -name "*.*" | head -n 1)
           
           if [ -z "$BINARY_PATH" ]; then
-            # 如果找不到叫 muguet 的，就找任何符合 arm64 release 的無副檔名檔案
             BINARY_PATH=$(find target/aarch64-apple-ios/release -maxdepth 2 -type f -not -name "*.*" | head -n 1)
           fi
           
@@ -95,8 +102,7 @@ jobs:
             zip -r Muguet.ipa Payload
             echo "IPA 打包成功！"
           else
-            echo "幹！還是找不到二進位檔，把 target 目錄印出來看"
-            find target -maxdepth 3
+            echo "幹！還是找不到二進位檔"
             exit 1
           fi
 
@@ -106,3 +112,4 @@ jobs:
           name: Muguet-IPA
           path: |
             **/build/Muguet.ipa
+
