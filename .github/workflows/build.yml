@@ -1,0 +1,37 @@
+name: Build Muguet IPA
+
+on:
+  workflow_dispatch: # 讓妳可以在網頁上手動點擊「開始執行」
+
+jobs:
+  build:
+    runs-on: macos-14 # 強制指定使用 macOS 14 (Apple Silicon 雲端環境)
+
+    steps:
+      - name: 檢查程式碼
+        uses: actions/checkout@v4
+
+      - name: 安裝特定版本的 Rust
+        run: |
+          rustup toolchain install 1.98.1
+          rustup default 1.98.1
+          rustup target add aarch64-apple-ios --toolchain 1.98.1
+
+      - name: 安裝 xcodegen
+        run: brew install xcodegen
+
+      - name: 編譯與打包
+        run: |
+          # 這裡根據 Muguet 專案的實際編譯指令來跑
+          # 通常會需要先產生 xcode 專案或執行對應的建置腳本
+          xcodegen generate
+          # 接著進行 xcodebuild 封裝成 .ipa (實際指令會依專案的 Makefile 或專案結構而定)
+          echo "請在這裡補上專案對應的打包指令"
+
+      - name: 上傳打包好的 IPA 檔案
+        uses: actions/upload-artifact@v4
+        with:
+          name: Muguet-IPA
+          path: |
+            *.ipa
+            # 如果輸出路徑不同，之後再把這邊的路徑改掉
