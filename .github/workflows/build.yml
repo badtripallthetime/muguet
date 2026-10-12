@@ -44,45 +44,56 @@ jobs:
           DIR=$(dirname "$PROJECT_YML")
           cd "$DIR"
           
-          # 1. 生成 Xcode 專案
-          xcodegen generate
+          # 確保 Rust 目標正確
+          rustup target add aarch64-apple-ios
           
-          # 2. 透過 Cargo 進行 iOS 目標的編譯 (如果專案需要)
-          # 這裡確保 Rust 依賴正確編譯
-          cargo build --target aarch64-apple-ios --release || true
+          echo "=== 開始透過 Cargo 直接進行 iOS 編譯 ==="
+          # Muguet 本身是 Rust 專案，我們直接針對 ios 目標編譯 release 版
+          cargo build --target aarch64-apple-ios --release
           
-          # 3. 使用 xcodebuild 進行編譯與歸檔 (Archive)
-          # 假設專案資料夾裡有 .xcodeproj 或者是被 xcodegen 生出來的 workspace/project
-          XCODEPROJ=$(find . -maxdepth 2 -name "*.xcodeproj" | head -n 1)
-          SCHEME_NAME=$(basename "$XCODEPROJ" .xcodeproj)
+          echo "=== 檢查編譯結果並組裝 .app ==="
+          # 尋找編譯出來的執行檔
+          BINARY_PATH=$(find target/aarch64-apple-ios/release -maxdepth 1 -type f -not -name "*.*")
           
-          echo "找到的 Xcode 專案: $XCODEPROJ"
-          echo "專案 Scheme: $SCHEME_NAME"
-          
-          # 建立輸出資料夾
-          mkdir -p build/Payload
-          
-          # 進行編譯 (使用 Generic iOS Device 進行 Release 編譯，不需綁定實機憑證即可先打包出未簽名 App)
-          xcodebuild -project "$XCODEPROJ" \
-                     -scheme "$SCHEME_NAME" \
-                     -configuration Release \
-                     -sdk iphoneos \
-                     -derivedDataPath build/DerivedData \
-                     CODE_SIGN_IDENTITY="" \
-                     CODE_SIGNING_REQUIRED=NO \
-                     CODE_SIGNING_ALLOWED=NO \
-                     build
-          
-          # 將編譯好的 .app 移動到 Payload 準備打包成 .ipa
-          # 尋找編譯出來的 .app
-          APP_PATH=$(find build/DerivedData -name "*.app" | head -n 1)
-          if [ -n "$APP_PATH" ]; then
-            cp -r "$APP_PATH" build/Payload/
+          if [ -n "$BINARY_PATH" ]; then
+            echo "找到編譯好的二進位檔: $BINARY_PATH"
+            
+            # 建立 iOS app 結構
+            mkdir -p build/Payload/Muguet.app
+            cp "$BINARY_PATH" build/Payload/Muguet.app/Muguet
+            
+            # 建立簡單的 Info.plist 讓系統認得它
+            cat << 'EOF' > build/Payload/Muguet.app/Info.plist
+            <?xml version="1.0" encoding="UTF-8"?>
+            <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+            <plist version="1.0">
+            <dict>
+                <key>CFBundleIdentifier</key>
+                <string>com.badtrip.muguet</string>
+                <key>CFBundleName</key>
+                <string>Muguet</string>
+                <key>CFBundlePackageType</key>
+                <string>APPL</string>
+                <key>CFBundleShortVersionString</key>
+                <string>1.0</string>
+                <key>CFBundleVersion</key>
+                <string>1</string>
+                <key>MinimumOSVersion</key>
+                <string>15.0</string>
+                <key>UIDeviceFamily</key>
+                <array>
+                    <integer>1</integer>
+                    <integer>2</integer>
+                </array>
+            </dict>
+            </plist>
+            EOF
+            
             cd build
             zip -r Muguet.ipa Payload
             echo "IPA 打包成功！"
           else
-            echo "幹！找不到編譯出來的 .app 檔案"
+            echo "幹！找不到 Cargo 編譯出來的二進位檔"
             exit 1
           fi
 
