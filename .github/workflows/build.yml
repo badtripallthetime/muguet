@@ -20,13 +20,23 @@ jobs:
       - name: 安裝 xcodegen
         run: brew install xcodegen
 
-      - name: 編譯與打包
+      - name: 尋找專案設定並編譯
         run: |
-          # 這裡根據 Muguet 專案的實際編譯指令來跑
-          # 通常會需要先產生 xcode 專案或執行對應的建置腳本
-          xcodegen generate
-          # 接著進行 xcodebuild 封裝成 .ipa (實際指令會依專案的 Makefile 或專案結構而定)
-          echo "請在這裡補上專案對應的打包指令"
+          echo "=== 正在尋找 project.yml 的位置 ==="
+          PROJECT_YML=$(find . -name "project.yml" | head -n 1)
+          echo "找到的檔案路徑: $PROJECT_YML"
+          
+          # 如果找到了，就用 --spec 指定它生成 Xcode 專案
+          if [ -n "$PROJECT_YML" ]; then
+            DIR=$(dirname "$PROJECT_YML")
+            cd "$DIR"
+            xcodegen generate
+            echo "=== 開始進行 Xcode 建置與打包 ==="
+            # 這裡之後補上編譯指令
+          else
+            echo "幹！真的找不到 project.yml，結構可能跟想像的不同"
+            exit 1
+          fi
 
       - name: 上傳打包好的 IPA 檔案
         uses: actions/upload-artifact@v4
