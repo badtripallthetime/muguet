@@ -1,11 +1,11 @@
 name: Build Muguet IPA
 
 on:
-  workflow_dispatch: # 讓妳可以在網頁上手動點擊「開始執行」
+  workflow_dispatch:
 
 jobs:
   build:
-    runs-on: macos-14 # 強制指定使用 macOS 14 (Apple Silicon 雲端環境)
+    runs-on: macos-14
 
     steps:
       - name: 檢查程式碼
@@ -17,91 +17,137 @@ jobs:
           rustup default 1.98.1
           rustup target add aarch64-apple-ios --toolchain 1.98.1
 
-      - name: 安裝 xcodegen
-        run: brew install xcodegen
-
-      - name: 尋找專案設定並編譯
+      - name: 安裝 XcodeGen
         run: |
-          echo "=== 正在尋找 project.yml 的位置 ==="
-          PROJECT_YML=$(find . -name "project.yml" | head -n 1)
-          echo "找到的檔案路徑: $PROJECT_YML"
-          
-          # 如果找到了，就用 --spec 指定它生成 Xcode 專案
-          if [ -n "$PROJECT_YML" ]; then
-            DIR=$(dirname "$PROJECT_YML")
-            cd "$DIR"
-            xcodegen generate
-            echo "=== 開始進行 Xcode 建置與打包 ==="
-            # 這裡之後補上編譯指令
-          else
-            echo "幹！真的找不到 project.yml，結構可能跟想像的不同"
+          brew install xcodegen
+
+      - name: 生成 Xcode 專案
+        run: |
+          echo "=== 正在尋找 project.yml ==="
+
+          PROJECT_YML=$(find "$GITHUB_WORKSPACE" -name "project.yml" -type f | head -n 1)
+
+          if [ -z "$PROJECT_YML" ]; then
+            echo "幹！真的找不到 project.yml"
             exit 1
           fi
+
+          echo "找到 project.yml:"
+          echo "$PROJECT_YML"
+
+          PROJECT_DIR=$(dirname "$PROJECT_YML")
+
+          echo "專案目錄:"
+          echo "$PROJECT_DIR"
+
+          cd "$PROJECT_DIR"
+
+          echo "=== 執行 XcodeGen ==="
+          xcodegen generate
+
+          echo "=== Xcode 專案生成完成 ==="
 
       - name: 編譯與打包 IPA
+        shell: bash
         run: |
-          PROJECT_YML=$(find . -name "project.yml" | head -n 1)
-          DIR=$(dirname "$PROJECT_YML")
-          cd "$DIR"
-          
-          rustup target add aarch64-apple-ios
-          export IPHONEOS_DEPLOYMENT_TARGET=15.0
-          
-          echo "=== 開始透過 Cargo 直接進行 iOS 編譯 ==="
-          cargo build --target aarch64-apple-ios --release
-          
-          echo "=== 檢查編譯結果並組裝 .app ==="
-          cd /Users/runner/work/muguet/muguet
-          
-          # 直接在全域搜尋執行檔
-          BINARY_PATH=$(find target/aarch64-apple-ios/release -maxdepth 2 -type f -not -name "*.*" | head -n 1)
-          if [ -z "$BINARY_PATH" ]; then
-            BINARY_PATH=$(find target/release -maxdepth 2 -type f -not -name "*.*" | head -n 1)
-          fi
-          
-          if [ -n "$BINARY_PATH" ]; then
-            echo "找到編譯好的二進位檔: $BINARY_PATH"
-            
-            mkdir -p build/Payload/Muguet.app
-            cp "$BINARY_PATH" build/Payload/Muguet.app/Muguet
-            
-            cat << 'EOF' > build/Payload/Muguet.app/Info.plist
-            <?xml version="1.0" encoding="UTF-8"?>
-            <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-            <plist version="1.0">
-            <dict>
-                <key>CFBundleIdentifier</key>
-                <string>com.badtrip.muguet</string>
-                <key>CFBundleName</key>
-                <string>Muguet</string>
-                <key>CFBundlePackageType</key>
-                <string>APPL</string>
-                <key>CFBundleShortVersionString</key>
-                <string>1.0</string>
-                <key>CFBundleVersion</key>
-                <string>1</string>
-                <key>MinimumOSVersion</key>
-                <string>15.0</string>
-                <key>UIDeviceFamily</key>
-                <array>
-                    <integer>1</integer>
-                    <integer>2</integer>
-                </array>
-            </dict>
-            </plist>
-            EOF
-            
-            cd build
-            zip -r Muguet.ipa Payload
-            echo "IPA 打包成功！"
-          else
-            echo "幹！還是找不到二進位檔"
+          set -e
+
+          echo "=== 正在尋找 project.yml ==="
+
+          PROJECT_YML=$(find "$GITHUB_WORKSPACE" -name "project.yml" -type f | head -n 1)
+
+          if [ -z "$PROJECT_YML" ]; then
+            echo "幹！找不到 project.yml"
             exit 1
           fi
 
-      - name: 上傳打包好的 IPA 檔案
+          PROJECT_DIR=$(dirname "$PROJECT_YML")
+
+          echo "專案目錄: $PROJECT_DIR"
+
+          cd "$PROJECT_DIR"
+
+          echo "=== 安裝 iOS Rust target ==="
+          rustup target add aarch64-apple-ios
+
+          export IPHONEOS_DEPLOYMENT_TARGET=15.0
+
+          echo "=== 開始透過 Cargo 編譯 iOS ==="
+
+          cargo build \
+            --target aarch64-apple-ios \
+            --release
+
+          echo "=== Cargo 編譯完成 ==="
+
+          echo "=== 檢查編譯結果 ==="
+
+          BINARY_PATH="$PROJECT_DIR/target/aarch64-apple-ios/release/muguet"
+
+          if [ ! -f "$BINARY_PATH" ]; then
+            echo "找不到預期的 muguet 執行檔"
+            echo "目前 target 目錄內容:"
+            find "$PROJECT_DIR/target/aarch64-apple-ios/release" \
+              -maxdepth 2 \
+              -type f \
+              -print || true
+
+            exit 1
+          fi
+
+          echo "找到編譯好的二進位檔:"
+          echo "$BINARY_PATH"
+
+          echo "=== 建立 .app ==="
+
+          BUILD_DIR="$PROJECT_DIR/build"
+          APP_DIR="$BUILD_DIR/Payload/Muguet.app"
+
+          rm -rf "$BUILD_DIR"
+          mkdir -p "$APP_DIR"
+
+          cp "$BINARY_PATH" "$APP_DIR/Muguet"
+
+          chmod +x "$APP_DIR/Muguet"
+
+          echo "=== 建立 Info.plist ==="
+
+          /usr/libexec/PlistBuddy \
+            -c "Add :CFBundleIdentifier string com.badtrip.muguet" \
+            -c "Add :CFBundleName string Muguet" \
+            -c "Add :CFBundleDisplayName string Muguet" \
+            -c "Add :CFBundlePackageType string APPL" \
+            -c "Add :CFBundleShortVersionString string 1.0" \
+            -c "Add :CFBundleVersion string 1" \
+            -c "Add :MinimumOSVersion string 15.0" \
+            -c "Add :UIDeviceFamily array" \
+            -c "Add :UIDeviceFamily:0 integer 1" \
+            -c "Add :UIDeviceFamily:1 integer 2" \
+            "$APP_DIR/Info.plist"
+
+          echo "=== 檢查 .app ==="
+
+          find "$APP_DIR" -maxdepth 2 -type f -print
+
+          echo "=== Info.plist ==="
+          plutil -p "$APP_DIR/Info.plist"
+
+          echo "=== 建立 IPA ==="
+
+          cd "$BUILD_DIR"
+
+          rm -f Muguet.ipa
+
+          zip -r Muguet.ipa Payload
+
+          echo "=== IPA 打包成功 ==="
+
+          ls -lh Muguet.ipa
+
+      - name: 上傳打包好的 IPA
         uses: actions/upload-artifact@v4
         with:
           name: Muguet-IPA
           path: |
             **/build/Muguet.ipa
+          if-no-files-found: error
