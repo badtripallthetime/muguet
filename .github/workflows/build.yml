@@ -40,7 +40,6 @@ jobs:
 
       - name: 編譯與打包 IPA
         run: |
-          # 找尋 project.yml 並確保我們回到真正的專案根目錄
           PROJECT_YML=$(find . -name "project.yml" | head -n 1)
           DIR=$(dirname "$PROJECT_YML")
           cd "$DIR"
@@ -52,18 +51,12 @@ jobs:
           cargo build --target aarch64-apple-ios --release
           
           echo "=== 檢查編譯結果並組裝 .app ==="
-          # 回到 Git 專案最根目錄去尋找 target
           cd /Users/runner/work/muguet/muguet
           
-          # 印出當前目錄確認位置
-          pwd
-          ls -la
-          
           # 直接在全域搜尋執行檔
-          BINARY_PATH=$(find . -name "muguet" -type f -not -name "*.*" | head -n 1)
-          
+          BINARY_PATH=$(find target/aarch64-apple-ios/release -maxdepth 2 -type f -not -name "*.*" | head -n 1)
           if [ -z "$BINARY_PATH" ]; then
-            BINARY_PATH=$(find target/aarch64-apple-ios/release -maxdepth 2 -type f -not -name "*.*" | head -n 1)
+            BINARY_PATH=$(find target/release -maxdepth 2 -type f -not -name "*.*" | head -n 1)
           fi
           
           if [ -n "$BINARY_PATH" ]; then
@@ -112,4 +105,3 @@ jobs:
           name: Muguet-IPA
           path: |
             **/build/Muguet.ipa
-
