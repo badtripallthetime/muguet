@@ -44,17 +44,20 @@ jobs:
           DIR=$(dirname "$PROJECT_YML")
           cd "$DIR"
           
-          # 確保 Rust 目標正確
           rustup target add aarch64-apple-ios
-          
-          echo "=== 開始透過 Cargo 直接進行 iOS 編譯 ==="
-          # 強制設定 iOS 最低部署版本為 15.0，解決符號找不到的問題
           export IPHONEOS_DEPLOYMENT_TARGET=15.0
           
+          echo "=== 開始透過 Cargo 直接進行 iOS 編譯 ==="
           cargo build --target aarch64-apple-ios --release
           
           echo "=== 檢查編譯結果並組裝 .app ==="
-          BINARY_PATH=$(find target/aarch64-apple-ios/release -maxdepth 1 -type f -not -name "*.*")
+          # 放寬搜尋條件，直接在整個 target 資料夾底下找沒有副檔名的主執行檔
+          BINARY_PATH=$(find target -name "muguet" -type f -not -name "*.*" | head -n 1)
+          
+          if [ -z "$BINARY_PATH" ]; then
+            # 如果找不到叫 muguet 的，就找任何符合 arm64 release 的無副檔名檔案
+            BINARY_PATH=$(find target/aarch64-apple-ios/release -maxdepth 2 -type f -not -name "*.*" | head -n 1)
+          fi
           
           if [ -n "$BINARY_PATH" ]; then
             echo "找到編譯好的二進位檔: $BINARY_PATH"
@@ -92,7 +95,8 @@ jobs:
             zip -r Muguet.ipa Payload
             echo "IPA 打包成功！"
           else
-            echo "幹！找不到 Cargo 編譯出來的二進位檔"
+            echo "幹！還是找不到二進位檔，把 target 目錄印出來看"
+            find target -maxdepth 3
             exit 1
           fi
 
