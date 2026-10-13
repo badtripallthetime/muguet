@@ -1,52 +1,3 @@
-name: Build Muguet IPA
-
-on:
-  workflow_dispatch:
-
-jobs:
-  build:
-    runs-on: macos-14
-
-    steps:
-      - name: 檢查程式碼
-        uses: actions/checkout@v4
-
-      - name: 安裝特定版本的 Rust
-        run: |
-          rustup toolchain install 1.98.1
-          rustup default 1.98.1
-          rustup target add aarch64-apple-ios --toolchain 1.98.1
-
-      - name: 安裝 XcodeGen
-        run: |
-          brew install xcodegen
-
-      - name: 生成 Xcode 專案
-        run: |
-          echo "=== 正在尋找 project.yml ==="
-
-          PROJECT_YML=$(find "$GITHUB_WORKSPACE" -name "project.yml" -type f | head -n 1)
-
-          if [ -z "$PROJECT_YML" ]; then
-            echo "幹！真的找不到 project.yml"
-            exit 1
-          fi
-
-          echo "找到 project.yml:"
-          echo "$PROJECT_YML"
-
-          PROJECT_DIR=$(dirname "$PROJECT_YML")
-
-          echo "專案目錄:"
-          echo "$PROJECT_DIR"
-
-          cd "$PROJECT_DIR"
-
-          echo "=== 執行 XcodeGen ==="
-          xcodegen generate
-
-          echo "=== Xcode 專案生成完成 ==="
-
       - name: 編譯與打包 IPA
         shell: bash
         run: |
@@ -57,17 +8,30 @@ jobs:
           PROJECT_YML=$(find "$GITHUB_WORKSPACE" -name "project.yml" -type f | head -n 1)
 
           if [ -z "$PROJECT_YML" ]; then
-            echo "幹！找不到 project.yml"
+            echo "找不到 project.yml"
             exit 1
           fi
 
-          PROJECT_DIR=$(dirname "$PROJECT_YML")
+          IOS_DIR=$(dirname "$PROJECT_YML")
 
-          echo "專案目錄: $PROJECT_DIR"
+          echo "iOS 專案目錄: $IOS_DIR"
 
-          cd "$PROJECT_DIR"
+          # 找 Cargo.toml
+          CARGO_TOML=$(find "$GITHUB_WORKSPACE" -name "Cargo.toml" -type f | head -n 1)
+
+          if [ -z "$CARGO_TOML" ]; then
+            echo "找不到 Cargo.toml"
+            exit 1
+          fi
+
+          CARGO_DIR=$(dirname "$CARGO_TOML")
+
+          echo "Cargo 專案目錄: $CARGO_DIR"
+
+          cd "$CARGO_DIR"
 
           echo "=== 安裝 iOS Rust target ==="
+
           rustup target add aarch64-apple-ios
 
           export IPHONEOS_DEPLOYMENT_TARGET=15.0
@@ -80,30 +44,52 @@ jobs:
 
           echo "=== Cargo 編譯完成 ==="
 
-          echo "=== 檢查編譯結果 ==="
+          echo "=== 搜尋編譯結果 ==="
 
-          BINARY_PATH="$PROJECT_DIR/target/aarch64-apple-ios/release/muguet"
+          TARGET_DIR="$CARGO_DIR/target/aarch64-apple-ios/release"
+
+          echo "Target directory:"
+          echo "$TARGET_DIR"
+
+          if [ ! -d "$TARGET_DIR" ]; then
+            echo "找不到 target directory！"
+            echo "搜尋所有 target:"
+            find "$CARGO_DIR" -type d -name "aarch64-apple-ios" -print || true
+            exit 1
+          fi
+
+          echo "Target 內容:"
+          find "$TARGET_DIR" -maxdepth 2 -type f -print
+
+          # 找真正的 executable
+          BINARY_PATH="$TARGET_DIR/muguet"
 
           if [ ! -f "$BINARY_PATH" ]; then
-            echo "找不到預期的 muguet 執行檔"
-            echo "目前 target 目錄內容:"
-            find "$PROJECT_DIR/target/aarch64-apple-ios/release" \
-              -maxdepth 2 \
+            echo "找不到 muguet binary"
+
+            echo "目前 release 目錄:"
+            ls -lah "$TARGET_DIR"
+
+            echo "所有沒有副檔名的檔案:"
+            find "$TARGET_DIR" \
+              -maxdepth 1 \
               -type f \
+              ! -name "*.*" \
               -print || true
 
             exit 1
           fi
 
-          echo "找到編譯好的二進位檔:"
+          echo "找到編譯好的 binary:"
           echo "$BINARY_PATH"
 
           echo "=== 建立 .app ==="
 
-          BUILD_DIR="$PROJECT_DIR/build"
+          BUILD_DIR="$CARGO_DIR/build"
           APP_DIR="$BUILD_DIR/Payload/Muguet.app"
 
           rm -rf "$BUILD_DIR"
+
           mkdir -p "$APP_DIR"
 
           cp "$BINARY_PATH" "$APP_DIR/Muguet"
@@ -130,7 +116,12 @@ jobs:
           find "$APP_DIR" -maxdepth 2 -type f -print
 
           echo "=== Info.plist ==="
+
           plutil -p "$APP_DIR/Info.plist"
+
+          echo "=== 檢查 Mach-O binary ==="
+
+          file "$APP_DIR/Muguet"
 
           echo "=== 建立 IPA ==="
 
@@ -143,11 +134,3 @@ jobs:
           echo "=== IPA 打包成功 ==="
 
           ls -lh Muguet.ipa
-
-      - name: 上傳打包好的 IPA
-        uses: actions/upload-artifact@v4
-        with:
-          name: Muguet-IPA
-          path: |
-            **/build/Muguet.ipa
-          if-no-files-found: error
